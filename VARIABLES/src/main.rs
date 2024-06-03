@@ -6,7 +6,6 @@ fn main() {
     rust_fibonacci(15);
 // test 3
     fibonacci(15);
-    
     println!("Fahrenheit 37.0 to Celsius {}", convert_temperatures(37.0));
     loop_example_4();
     loop_example_3();
