@@ -5,7 +5,7 @@ use colored::*;
 fn main() {
     let mut life = 3;
     println!("Guess the number!");
-    let secret_number= rand::thread_rng().gen_range(1..=101);
+    let secret_number= rand::thread_rng().gen_range(1..101);
     loop {
         println!("Please input your guess.");
         let mut guess = String::new();

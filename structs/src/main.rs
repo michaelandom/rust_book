@@ -76,7 +76,7 @@ fn example_2() {
     let username = String::from("data_file1");
     let user2 = create_with_function(email, username);
 
-    let user3 = User {
+    let _user3 = User {
         email: String::from("data_file2@yopmail.com"),
         username: String::from("data_file"),
         ..user2
