@@ -158,16 +158,16 @@ async fn send_users_email_to_endpoint(
     fun_name(users_stream, db_pool,&4).await?;
 
 
-    // let response = client
-    //     .post(endpoint_url)
-    //     .header("Content-Type", "application/json")
-    //     .body(request_body.to_string())
-    //     .send()
-    //     .await?;
-    sleep(Duration::from_secs(30)).await;
+    let response = client
+        .post(endpoint_url)
+        .header("Content-Type", "application/json")
+        .body(request_body.to_string())
+        .send()
+        .await?;
+    // sleep(Duration::from_secs(30)).await;
     
 
-    if true {
+    if response.status().is_success() {
         fun_name_update(users_stream, db_pool,&4).await?;
 
         println!("Users data sent successfully.");
@@ -298,16 +298,16 @@ async fn send_users_sms_to_endpoint(
     let request_body = json!({ "users": users_stream });
     fun_name(users_stream, db_pool,&3).await?;
 
-    // let response = client
-    //     .post(endpoint_url)
-    //     .header("Content-Type", "application/json")
-    //     .body(request_body.to_string())
-    //     .send()
-    //     .await?;
-    sleep(Duration::from_secs(15)).await;
+    let response = client
+        .post(endpoint_url)
+        .header("Content-Type", "application/json")
+        .body(request_body.to_string())
+        .send()
+        .await?;
+    // sleep(Duration::from_secs(30)).await;
     
 
-    if true  {
+    if response.status().is_success() {
          fun_name_update(users_stream, db_pool,&3).await?;
         
         println!("Users data sent successfully.");
@@ -336,17 +336,16 @@ async fn send_users_voice_to_endpoint(
 
     let request_body = json!({ "users": users_stream });
     fun_name(users_stream, db_pool,&2).await?;
+    let response = client
+    .post(endpoint_url)
+    .header("Content-Type", "application/json")
+    .body(request_body.to_string())
+    .send()
+    .await?;
+// sleep(Duration::from_secs(30)).await;
 
-    // let response = client
-    //     .post(endpoint_url)
-    //     .header("Content-Type", "application/json")
-    //     .body(request_body.to_string())
-    //     .send()
-    //     .await?;
-    sleep(Duration::from_secs(15)).await;
-    
 
-    if true {
+if response.status().is_success() {
         fun_name_update(users_stream, db_pool,&2).await?;
       
         println!("Users data sent successfully.");
@@ -376,18 +375,16 @@ async fn send_users_push_to_endpoint(
     let request_body = json!({ "users": users_stream });
     fun_name(users_stream, db_pool,&1).await?;
  
- 
- // let response = client
-    //     .post(endpoint_url)
-    //     .header("Content-Type", "application/json")
-    //     .body(request_body.to_string())
-    //     .send()
-    //     .await?;
-    
-    sleep(Duration::from_secs(15)).await;
-    
+    let response = client
+    .post(endpoint_url)
+    .header("Content-Type", "application/json")
+    .body(request_body.to_string())
+    .send()
+    .await?;
+// sleep(Duration::from_secs(30)).await;
 
-    if true  {
+
+if response.status().is_success() {
     fun_name_update(users_stream, db_pool,&1).await?;
 
         println!("Users data sent successfully.");
@@ -632,6 +629,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     create_schema(&pool).await?;
 
+
+
+
+
+
+    
     // seed_data(&pool).await?;
 
     // Read user data concurrently
@@ -642,6 +645,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     //     read_users_in_batches(&pool, 50_000, 75_000,&pool),
     //     read_users_in_batches(&pool, 75_000, 100_000,&pool),
     // );
+
+
+
+
 
     let results: Vec<_> = (0..4)
         .into_par_iter()
@@ -659,6 +666,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         "Reading user data in batches took {:?}",
         read_users_duration
     );
+    
 
     // let read_users_start = Instant::now();
     // process_users_in_batches(&pool, 0, 100_000, 20).await?;
