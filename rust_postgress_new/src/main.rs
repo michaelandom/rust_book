@@ -213,7 +213,7 @@ async fn read_users_in_batches(
     while offset < end_offset {
         let users: Vec<User> =
             sqlx::query_as::<_, User>("SELECT id, name, email FROM users LIMIT $1 OFFSET $2")
-                .bind(1000i32)
+                .bind(500i32)
                 .bind(offset)
                 .fetch_all(db_pool)
                 .await?;
@@ -257,7 +257,7 @@ async fn read_users_in_batches(
             Ok(())
         }));
 
-        offset += 1000;
+        offset += 500;
     }
     join_all(tasks).await;
 
@@ -269,22 +269,32 @@ async fn send_users_email_to_endpoint(
     db_pool: &PgPool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::new();
-    let endpoint_url = "https://rust_email.requestcatcher.com/notification/email";
+    let endpoint_url = "http://192.168.1.10:3000/a";
     let request_body = json!({ "users": users_stream });
-    create_user_confirmation(users_stream, db_pool, &4).await?;
+    // create_user_confirmation(users_stream, db_pool, &4).await?;
+    let start_time = Instant::now();
     let response = client
         .post(endpoint_url)
         .header("Content-Type", "application/json")
         .body(request_body.to_string())
         .send()
         .await?;
-    if response.status().is_success() {
-        update_user_confirmation(users_stream, db_pool, &4).await?;
+    let elapsed_time = start_time.elapsed().as_secs();
 
-        println!("Users data sent successfully.");
+    let sent_count = users_stream.len();
+
+    let received_count = if response.status().is_success() {
+        // update_user_confirmation(users_stream, db_pool, &4).await?;
+        // println!("Users data sent successfully.");
+        sent_count
     } else {
-        println!("Failed to send users data: {:?}", "response.status()");
-    }
+        // println!("Failed to send users data: {:?}", "response.status()");
+        0
+    };
+
+    println!("Sent emails: {}", sent_count);
+    println!("Received emails: {}", received_count);
+    println!("Time taken: {} s", elapsed_time);
 
     Ok(())
 }
@@ -295,22 +305,33 @@ async fn send_users_sms_to_endpoint(
     db_pool: &PgPool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::new();
-    let endpoint_url = "https://rust_sms.requestcatcher.com/notification/sms";
+    let endpoint_url = "http://192.168.1.10:3000/a";
     let request_body = json!({ "users": users_stream });
-    create_user_confirmation(users_stream, db_pool, &3).await?;
+    // create_user_confirmation(users_stream, db_pool, &4).await?;
+    let start_time = Instant::now();
     let response = client
         .post(endpoint_url)
         .header("Content-Type", "application/json")
         .body(request_body.to_string())
         .send()
         .await?;
-    if response.status().is_success() {
-        update_user_confirmation(users_stream, db_pool, &3).await?;
+    let elapsed_time = start_time.elapsed().as_secs();
 
-        println!("Users data sent successfully.");
+    let sent_count = users_stream.len();
+
+    let received_count = if response.status().is_success() {
+        // update_user_confirmation(users_stream, db_pool, &4).await?;
+        // println!("Users data sent successfully.");
+        sent_count
     } else {
-        println!("Failed to send users data: {:?}", "response.status()");
-    }
+        // println!("Failed to send users data: {:?}", "response.status()");
+        0
+    };
+
+    println!("Sent sms: {}", sent_count);
+    println!("Received sms: {}", received_count);
+    println!("Time taken: {} s", elapsed_time);
+
     Ok(())
 }
 
@@ -319,22 +340,32 @@ async fn send_users_voice_to_endpoint(
     db_pool: &PgPool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::new();
-    let endpoint_url = "https://rust_voice.requestcatcher.com/notification/voice";
+    let endpoint_url = "http://192.168.1.10:3000/a";
     let request_body = json!({ "users": users_stream });
-    create_user_confirmation(users_stream, db_pool, &2).await?;
+    // create_user_confirmation(users_stream, db_pool, &4).await?;
+    let start_time = Instant::now();
     let response = client
         .post(endpoint_url)
         .header("Content-Type", "application/json")
         .body(request_body.to_string())
         .send()
         .await?;
-    if response.status().is_success() {
-        update_user_confirmation(users_stream, db_pool, &2).await?;
+    let elapsed_time = start_time.elapsed().as_secs();
 
-        println!("Users data sent successfully.");
+    let sent_count = users_stream.len();
+
+    let received_count = if response.status().is_success() {
+        // update_user_confirmation(users_stream, db_pool, &4).await?;
+        // println!("Users data sent successfully.");
+        sent_count
     } else {
-        println!("Failed to send users data: {:?}", "response.status()");
-    }
+        // println!("Failed to send users data: {:?}", "response.status()");
+        0
+    };
+
+    println!("Sent voice: {}", sent_count);
+    println!("Received voice: {}", received_count);
+    println!("Time taken: {} s", elapsed_time);
     Ok(())
 }
 
@@ -343,23 +374,32 @@ async fn send_users_push_to_endpoint(
     db_pool: &PgPool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::new();
-    let endpoint_url = "https://rust_push.requestcatcher.com/notification/push";
+    let endpoint_url = "http://192.168.1.10:3000/a";
     let request_body = json!({ "users": users_stream });
-    create_user_confirmation(users_stream, db_pool, &1).await?;
+    // create_user_confirmation(users_stream, db_pool, &4).await?;
+    let start_time = Instant::now();
     let response = client
         .post(endpoint_url)
         .header("Content-Type", "application/json")
         .body(request_body.to_string())
         .send()
         .await?;
-    if response.status().is_success() {
-        update_user_confirmation(users_stream, db_pool, &1).await?;
+    let elapsed_time = start_time.elapsed().as_secs();
 
-        println!("Users data sent successfully.");
+    let sent_count = users_stream.len();
+
+    let received_count = if response.status().is_success() {
+        // update_user_confirmation(users_stream, db_pool, &4).await?;
+        // println!("Users data sent successfully.");
+        sent_count
     } else {
-        println!("Failed to send users data: {:?}", "response.status()");
-    }
+        // println!("Failed to send users data: {:?}", "response.status()");
+        0
+    };
 
+    println!("Sent push: {}", sent_count);
+    println!("Received push: {}", received_count);
+    println!("Time taken: {} s", elapsed_time);
     Ok(())
 }
 
@@ -380,7 +420,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let read_users_start = Instant::now();
 
     let results: Vec<_> = (0..4)
-        .into_par_iter()
+        .into_iter()
         .map(|i| {
             let start = i * 25_000;
             let end = (i + 1) * 25_000;
