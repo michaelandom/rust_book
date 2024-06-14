@@ -210,13 +210,18 @@ async fn read_users_in_batches(
 ) -> Result<(), sqlx::Error> {
     let mut offset = start_offset;
     let mut tasks: Vec<tokio::task::JoinHandle<Result<(), sqlx::Error>>> = Vec::new();
+    let mut count=0;
+    let start_time = Instant::now();
+  
     while offset < end_offset {
         let users: Vec<User> =
             sqlx::query_as::<_, User>("SELECT id, name, email FROM users LIMIT $1 OFFSET $2")
-                .bind(500i32)
+                .bind(1000i32)
                 .bind(offset)
                 .fetch_all(db_pool)
                 .await?;
+
+        count=count+users.len();
         let users2 = Arc::new(users.to_vec());
         let users3 = Arc::new(users.to_vec());
         let users4 = Arc::new(users.to_vec());
@@ -257,8 +262,15 @@ async fn read_users_in_batches(
             Ok(())
         }));
 
-        offset += 500;
+        offset += 1000;
     }
+
+    let elapsed_time = start_time.elapsed().as_millis();
+
+    println!("count of user: {} number", count);
+    println!("count of jobs: {} number", tasks.len());
+    println!("Time taken for the DB: {} ms", elapsed_time);
+
     join_all(tasks).await;
 
     Ok(())
@@ -269,7 +281,7 @@ async fn send_users_email_to_endpoint(
     db_pool: &PgPool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::new();
-    let endpoint_url = "http://192.168.1.10:3000/a";
+    let endpoint_url = "http://192.168.1.8:3000/a";
     let request_body = json!({ "users": users_stream });
     // create_user_confirmation(users_stream, db_pool, &4).await?;
     let start_time = Instant::now();
@@ -305,7 +317,7 @@ async fn send_users_sms_to_endpoint(
     db_pool: &PgPool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::new();
-    let endpoint_url = "http://192.168.1.10:3000/a";
+    let endpoint_url = "http://192.168.1.8:3000/a";
     let request_body = json!({ "users": users_stream });
     // create_user_confirmation(users_stream, db_pool, &4).await?;
     let start_time = Instant::now();
@@ -340,7 +352,7 @@ async fn send_users_voice_to_endpoint(
     db_pool: &PgPool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::new();
-    let endpoint_url = "http://192.168.1.10:3000/a";
+    let endpoint_url = "http://192.168.1.8:3000/a";
     let request_body = json!({ "users": users_stream });
     // create_user_confirmation(users_stream, db_pool, &4).await?;
     let start_time = Instant::now();
@@ -374,7 +386,7 @@ async fn send_users_push_to_endpoint(
     db_pool: &PgPool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::new();
-    let endpoint_url = "http://192.168.1.10:3000/a";
+    let endpoint_url = "http://192.168.1.8:3000/a";
     let request_body = json!({ "users": users_stream });
     // create_user_confirmation(users_stream, db_pool, &4).await?;
     let start_time = Instant::now();
