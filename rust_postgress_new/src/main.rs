@@ -278,7 +278,7 @@ async fn read_users_in_batches(
     println!("count of jobs: {} number", tasks.len());
     println!("Time taken for the DB: {} ms", elapsed_time);
 
-    // join_all(tasks).await;
+    join_all(tasks).await;
 
     Ok(())
 }
