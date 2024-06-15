@@ -9,6 +9,7 @@ use serde_json::to_string;
 use sqlx::prelude::FromRow;
 use sqlx::PgPool;
 use sqlx::Row;
+use sqlx::types::Json;
 use std::error::Error;
 use std::sync::Arc;
 use std::time::Instant;
@@ -48,6 +49,12 @@ pub struct User {
     pub id: i32,
     pub name: String,
     pub email: String,
+    pub email2: String,
+    pub email3: String,
+    pub phone: String,
+    pub phone2: String,
+    pub phone3: String,
+    pub fcm: Json<serde_json::Value>
 }
 
 #[derive(Debug)]
@@ -84,12 +91,17 @@ pub async fn create_schema(db_pool: &PgPool) -> Result<(), sqlx::Error> {
 }
 
 pub async fn create_user(db_pool: &PgPool, user: User) -> Result<User, sqlx::Error> {
-    sqlx::query("INSERT INTO users (name, email) VALUES ($1, $2)")
+   sqlx::query("INSERT INTO users (name, email,email2,email3,phone,phone2,phone3,fcm) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)")
         .bind(&user.name)
         .bind(&user.email)
+        .bind(&user.email2)
+        .bind(&user.email3)
+        .bind(&user.phone)
+        .bind(&user.phone2)
+        .bind(&user.phone3)
+        .bind(&user.fcm)
         .execute(db_pool)
         .await?;
-
     Ok(user)
 }
 
@@ -155,8 +167,7 @@ async fn send_users_email_to_endpoint(
 
     let request_body = json!({ "users": users_stream });
 
-    fun_name(users_stream, db_pool,&4).await?;
-
+    fun_name(users_stream, db_pool, &4).await?;
 
     let response = client
         .post(endpoint_url)
@@ -165,10 +176,9 @@ async fn send_users_email_to_endpoint(
         .send()
         .await?;
     // sleep(Duration::from_secs(30)).await;
-    
 
     if response.status().is_success() {
-        fun_name_update(users_stream, db_pool,&4).await?;
+        fun_name_update(users_stream, db_pool, &4).await?;
 
         println!("Users data sent successfully.");
     } else {
@@ -178,7 +188,11 @@ async fn send_users_email_to_endpoint(
     Ok(())
 }
 
-async fn fun_name(users_stream: &Vec<User>, db_pool: &sqlx::Pool<sqlx::Postgres>,delivery_type: &i32) -> Result<(), Box<dyn Error>> {
+async fn fun_name(
+    users_stream: &Vec<User>,
+    db_pool: &sqlx::Pool<sqlx::Postgres>,
+    delivery_type: &i32,
+) -> Result<(), Box<dyn Error>> {
     let mut ss = String::from("");
     let _user_futures: Vec<NotificationUser> = users_stream
         .into_iter()
@@ -212,25 +226,30 @@ async fn fun_name(users_stream: &Vec<User>, db_pool: &sqlx::Pool<sqlx::Postgres>
         String::from("INSERT INTO notification_user (user_id, email, delivery_type) VALUES ");
     newa.push_str(&ss);
     let mut transaction = db_pool.begin().await?;
-    Ok(match sqlx::query(newa.as_str()).execute(&mut transaction).await {
-        Ok(_) => {
-            transaction.commit().await?;
-            // Ok(())
-        }
-        Err(e) => {
-            transaction.rollback().await?;
-            // Err(e)
-        }
-    })
+    Ok(
+        match sqlx::query(newa.as_str()).execute(&mut transaction).await {
+            Ok(_) => {
+                transaction.commit().await?;
+                // Ok(())
+            }
+            Err(e) => {
+                transaction.rollback().await?;
+                // Err(e)
+            }
+        },
+    )
 }
 
-async fn fun_name_update(users_stream: &Vec<User>, db_pool: &sqlx::Pool<sqlx::Postgres>, delivery_type: &i32) -> Result<(), Box<dyn Error>> {
+async fn fun_name_update(
+    users_stream: &Vec<User>,
+    db_pool: &sqlx::Pool<sqlx::Postgres>,
+    delivery_type: &i32,
+) -> Result<(), Box<dyn Error>> {
     let mut ss = String::from("");
     ss.push('(');
 
     let _user_futures: Vec<NotificationUser> = users_stream
-
-    .into_iter()
+        .into_iter()
         .map(|user| {
             let user: NotificationUser = NotificationUser {
                 id: user.id,
@@ -239,12 +258,12 @@ async fn fun_name_update(users_stream: &Vec<User>, db_pool: &sqlx::Pool<sqlx::Po
                 delivery_type: 4,
             };
             ss.push_str(&user.user_id.to_string());
-           // ss.push(',');
-           // ss.push('\'');
-           // ss.push_str(&user.email.to_string());
+            // ss.push(',');
+            // ss.push('\'');
+            // ss.push_str(&user.email.to_string());
             //ss.push('\'');
-           // ss.push(',');
-           // ss.push_str(&user.delivery_type.to_string());
+            // ss.push(',');
+            // ss.push_str(&user.delivery_type.to_string());
             ss.push(',');
             user
             // create_notification(db_pool, user)
@@ -256,27 +275,27 @@ async fn fun_name_update(users_stream: &Vec<User>, db_pool: &sqlx::Pool<sqlx::Po
         return Ok(());
     }
 
-        
-        ss.push(')');
-         
-   
-    
-    
-    let mut newa =
-        String::from(format!("UPDATE notification_user SET status = 'sent' WHERE delivery_type={} and user_id IN ",delivery_type));
-        newa.push_str(&ss);
+    ss.push(')');
 
-        let mut transaction = db_pool.begin().await?;
-    Ok(match sqlx::query(newa.as_str()).execute(&mut transaction).await {
-        Ok(_) => {
-            transaction.commit().await?;
-            // Ok(())
-        }
-        Err(e) => {
-            transaction.rollback().await?;
-            // Err(e)
-        }
-    })
+    let mut newa = String::from(format!(
+        "UPDATE notification_user SET status = 'sent' WHERE delivery_type={} and user_id IN ",
+        delivery_type
+    ));
+    newa.push_str(&ss);
+
+    let mut transaction = db_pool.begin().await?;
+    Ok(
+        match sqlx::query(newa.as_str()).execute(&mut transaction).await {
+            Ok(_) => {
+                transaction.commit().await?;
+                // Ok(())
+            }
+            Err(e) => {
+                transaction.rollback().await?;
+                // Err(e)
+            }
+        },
+    )
 }
 
 async fn send_users_sms_to_endpoint(
@@ -296,7 +315,7 @@ async fn send_users_sms_to_endpoint(
     //     .collect();
 
     let request_body = json!({ "users": users_stream });
-    fun_name(users_stream, db_pool,&3).await?;
+    fun_name(users_stream, db_pool, &3).await?;
 
     let response = client
         .post(endpoint_url)
@@ -305,11 +324,10 @@ async fn send_users_sms_to_endpoint(
         .send()
         .await?;
     // sleep(Duration::from_secs(30)).await;
-    
 
     if response.status().is_success() {
-         fun_name_update(users_stream, db_pool,&3).await?;
-        
+        fun_name_update(users_stream, db_pool, &3).await?;
+
         println!("Users data sent successfully.");
     } else {
         println!("Failed to send users data: {:?}", "response.status()");
@@ -335,19 +353,18 @@ async fn send_users_voice_to_endpoint(
     //     .collect();
 
     let request_body = json!({ "users": users_stream });
-    fun_name(users_stream, db_pool,&2).await?;
+    fun_name(users_stream, db_pool, &2).await?;
     let response = client
-    .post(endpoint_url)
-    .header("Content-Type", "application/json")
-    .body(request_body.to_string())
-    .send()
-    .await?;
-// sleep(Duration::from_secs(30)).await;
+        .post(endpoint_url)
+        .header("Content-Type", "application/json")
+        .body(request_body.to_string())
+        .send()
+        .await?;
+    // sleep(Duration::from_secs(30)).await;
 
+    if response.status().is_success() {
+        fun_name_update(users_stream, db_pool, &2).await?;
 
-if response.status().is_success() {
-        fun_name_update(users_stream, db_pool,&2).await?;
-      
         println!("Users data sent successfully.");
     } else {
         println!("Failed to send users data: {:?}", "response.status()");
@@ -373,19 +390,18 @@ async fn send_users_push_to_endpoint(
     //     .collect();
 
     let request_body = json!({ "users": users_stream });
-    fun_name(users_stream, db_pool,&1).await?;
- 
+    fun_name(users_stream, db_pool, &1).await?;
+
     let response = client
-    .post(endpoint_url)
-    .header("Content-Type", "application/json")
-    .body(request_body.to_string())
-    .send()
-    .await?;
-// sleep(Duration::from_secs(30)).await;
+        .post(endpoint_url)
+        .header("Content-Type", "application/json")
+        .body(request_body.to_string())
+        .send()
+        .await?;
+    // sleep(Duration::from_secs(30)).await;
 
-
-if response.status().is_success() {
-    fun_name_update(users_stream, db_pool,&1).await?;
+    if response.status().is_success() {
+        fun_name_update(users_stream, db_pool, &1).await?;
 
         println!("Users data sent successfully.");
     } else {
@@ -566,12 +582,18 @@ async fn process_users_in_batches(
 async fn seed_data(db_pool: &PgPool) -> Result<(), sqlx::Error> {
     let start = Instant::now();
     // Insert users
-    let user_futures: Vec<_> = (1..=100_000)
+    let user_futures: Vec<_> = (1..=1_00_000)
         .map(|i| {
             let user = User {
                 id: i,
                 name: format!("User {}", i),
                 email: format!("user{}@example.com", i),
+                email2: format!("user{}@example.com", i),
+                email3: format!("user{}@example.com", i),
+                phone: format!("phone{}", i),
+                phone2: format!("phone2{}@example.com", i),
+                phone3: format!("phone3{}@example.com", i),
+                fcm: Json(json!({})),
             };
             create_user(db_pool, user)
         })
@@ -604,7 +626,7 @@ async fn seed_data(db_pool: &PgPool) -> Result<(), sqlx::Error> {
     let start = Instant::now();
 
     // Add users to groups
-    let group_user_futures: Vec<_> = (1..=100_000)
+    let group_user_futures: Vec<_> = (1..=600_000)
         .map(|user_id| {
             let group_user = GroupUser {
                 group_id: (user_id % 100) + 1,
@@ -627,46 +649,43 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let pool = sqlx::postgres::PgPool::connect(url).await?;
 
-    create_schema(&pool).await?;
+    // create_schema(&pool).await?;
 
+    seed_data(&pool).await?;
+    seed_data(&pool).await?;
+    seed_data(&pool).await?;
+    seed_data(&pool).await?;
+    seed_data(&pool).await?;
+    seed_data(&pool).await?;
+    seed_data(&pool).await?;
+    seed_data(&pool).await?;
+    seed_data(&pool).await?;
+    seed_data(&pool).await?;
+    // // Read user data concurrently
+    // let read_users_start = Instant::now();
+    // // let _var_name = tokio::join!(
+    // //     read_users_in_batches(&pool, 0, 25_000,&pool),
+    // //     read_users_in_batches(&pool, 25_000, 50_000,&pool),
+    // //     read_users_in_batches(&pool, 50_000, 75_000,&pool),
+    // //     read_users_in_batches(&pool, 75_000, 100_000,&pool),
+    // // );
 
+    // let results: Vec<_> = (0..4)
+    //     .into_par_iter()
+    //     .map(|i| {
+    //         let start = i * 25_000;
+    //         let end = (i + 1) * 25_000;
+    //         read_users_in_batches(&pool, start, end)
+    //     })
+    //     .collect();
 
+    // let _all_users = join_all(results).await;
+    // let read_users_duration = read_users_start.elapsed();
 
-
-
-    
-    // seed_data(&pool).await?;
-
-    // Read user data concurrently
-    let read_users_start = Instant::now();
-    // let _var_name = tokio::join!(
-    //     read_users_in_batches(&pool, 0, 25_000,&pool),
-    //     read_users_in_batches(&pool, 25_000, 50_000,&pool),
-    //     read_users_in_batches(&pool, 50_000, 75_000,&pool),
-    //     read_users_in_batches(&pool, 75_000, 100_000,&pool),
+    // println!(
+    //     "Reading user data in batches took {:?}",
+    //     read_users_duration
     // );
-
-
-
-
-
-    let results: Vec<_> = (0..4)
-        .into_par_iter()
-        .map(|i| {
-            let start = i * 25_000;
-            let end = (i + 1) * 25_000;
-            read_users_in_batches(&pool, start, end)
-        })
-        .collect();
-
-    let _all_users = join_all(results).await;
-    let read_users_duration = read_users_start.elapsed();
-
-    println!(
-        "Reading user data in batches took {:?}",
-        read_users_duration
-    );
-    
 
     // let read_users_start = Instant::now();
     // process_users_in_batches(&pool, 0, 100_000, 20).await?;
