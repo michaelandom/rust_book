@@ -11,11 +11,18 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::time::{sleep, Duration};
 use tokio::task;
+use sqlx::types::Json;
 #[derive(Debug, FromRow, Serialize, Deserialize, Clone)]
 pub struct User {
     pub id: i32,
     pub name: String,
     pub email: String,
+    pub email2: String,
+    pub email3: String,
+    pub phone: String,
+    pub phone2: String,
+    pub phone3: String,
+    pub fcm: Json<serde_json::Value>
 }
 
 #[derive(Debug)]
@@ -215,7 +222,7 @@ async fn read_users_in_batches(
   
     while offset < end_offset {
         let users: Vec<User> =
-            sqlx::query_as::<_, User>("SELECT id, name, email FROM users LIMIT $1 OFFSET $2")
+            sqlx::query_as::<_, User>("SELECT * FROM users LIMIT $1 OFFSET $2")
                 .bind(1000i32)
                 .bind(offset)
                 .fetch_all(db_pool)
@@ -271,7 +278,7 @@ async fn read_users_in_batches(
     println!("count of jobs: {} number", tasks.len());
     println!("Time taken for the DB: {} ms", elapsed_time);
 
-    join_all(tasks).await;
+    // join_all(tasks).await;
 
     Ok(())
 }
@@ -431,7 +438,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let read_users_start = Instant::now();
 
-    let results: Vec<_> = (0..4)
+    let results: Vec<_> = (0..24)
         .into_iter()
         .map(|i| {
             let start = i * 25_000;
