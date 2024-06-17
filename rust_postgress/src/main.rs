@@ -661,6 +661,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     seed_data(&pool).await?;
     seed_data(&pool).await?;
     seed_data(&pool).await?;
+    
+    
+    
     // // Read user data concurrently
     // let read_users_start = Instant::now();
     // // let _var_name = tokio::join!(

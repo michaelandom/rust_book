@@ -5,13 +5,14 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::prelude::FromRow;
+use sqlx::types::Json;
 use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 use std::time::Instant;
-use tokio::time::{sleep, Duration};
+use tokio::sync::Mutex;
 use tokio::task;
-use sqlx::types::Json;
+use tokio::time::{sleep, Duration};
 #[derive(Debug, FromRow, Serialize, Deserialize, Clone)]
 pub struct User {
     pub id: i32,
@@ -22,7 +23,7 @@ pub struct User {
     pub phone: String,
     pub phone2: String,
     pub phone3: String,
-    pub fcm: Json<serde_json::Value>
+    pub fcm: Json<serde_json::Value>,
 }
 
 #[derive(Debug)]
@@ -83,7 +84,7 @@ pub async fn create_notification(
     db_pool: &PgPool,
     notification_user: NotificationUser,
 ) -> Result<NotificationUser, sqlx::Error> {
-     sqlx::query(
+    sqlx::query(
         "INSERT INTO notification_user (user_id, email,delivery_type)
     VALUES ($1, $2,$3)",
     )
@@ -117,32 +118,23 @@ async fn create_user_confirmation(
     db_pool: &sqlx::Pool<sqlx::Postgres>,
     delivery_type: &i32,
 ) -> Result<(), Box<dyn Error>> {
-    let mut ss = String::from("");
-    let _user_futures: Vec<NotificationUser> = users_stream
-        .into_iter()
+    // let mut ss = String::from("");
+    let mut ss: String = users_stream
+        .into_par_iter()
         .map(|user| {
-            let user: NotificationUser = NotificationUser {
-                id: user.id,
-                user_id: user.id,
-                email: String::from(&user.email),
-                delivery_type: 4,
-            };
-            ss.push('(');
-            ss.push_str(&user.user_id.to_string());
-            ss.push(',');
-            ss.push('\'');
-            ss.push_str(&user.email.to_string());
-            ss.push('\'');
-            ss.push(',');
-            ss.push_str(&delivery_type.to_string());
-            ss.push(')');
-            ss.push(',');
-            user
+            format!(
+                "({},{},{})",
+                user.id,
+                format!("'{}'", user.email),
+                delivery_type
+            )
         })
-        .collect();
+        .collect::<Vec<_>>()
+        .join(",");
+
     if ss.ends_with(',') {
         ss.pop();
-    } else {
+    } else if ss.is_empty() {
         return Ok(());
     }
     let mut newa =
@@ -166,6 +158,18 @@ async fn update_user_confirmation(
     db_pool: &sqlx::Pool<sqlx::Postgres>,
     delivery_type: &i32,
 ) -> Result<(), Box<dyn Error>> {
+    let mut ss: String = users_stream
+        .into_par_iter()
+        .map(|user| {
+            format!(
+                "({},{},{})",
+                user.id,
+                format!("'{}'", user.email),
+                delivery_type
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
     let mut ss = String::from("");
     ss.push('(');
 
@@ -217,18 +221,17 @@ async fn read_users_in_batches(
 ) -> Result<(), sqlx::Error> {
     let mut offset = start_offset;
     let mut tasks: Vec<tokio::task::JoinHandle<Result<(), sqlx::Error>>> = Vec::new();
-    let mut count=0;
-    let start_time = Instant::now();
-  
-    while offset < end_offset {
-        let users: Vec<User> =
-            sqlx::query_as::<_, User>("SELECT * FROM users LIMIT $1 OFFSET $2")
-                .bind(1000i32)
-                .bind(offset)
-                .fetch_all(db_pool)
-                .await?;
+    let mut count = 0;
+    // let start_time = Instant::now();
 
-        count=count+users.len();
+    while offset < end_offset {
+        let users: Vec<User> = sqlx::query_as::<_, User>("SELECT * FROM users LIMIT $1 OFFSET $2")
+            .bind(1000i32)
+            .bind(offset)
+            .fetch_all(db_pool)
+            .await?;
+
+        count = count + users.len();
         let users2 = Arc::new(users.to_vec());
         let users3 = Arc::new(users.to_vec());
         let users4 = Arc::new(users.to_vec());
@@ -236,50 +239,49 @@ async fn read_users_in_batches(
         let db_pool_arc = Arc::new(db_pool.clone());
 
         tasks.push(task::spawn(async move {
+            
             if let Err(e) = send_users_email_to_endpoint(&users, db_pool_arc.as_ref()).await {
                 println!("Error sending users to endpoint: {}", e);
             }
             Ok(())
         }));
 
-        let db_pool_arc = Arc::new(db_pool.clone());
+        // let db_pool_arc = Arc::new(db_pool.clone());
 
-        tasks.push(task::spawn(async move {
-            if let Err(e) = send_users_sms_to_endpoint(&users2, db_pool_arc.as_ref()).await {
-                println!("Error sending users to endpoint: {}", e);
-            }
-            Ok(())
-        }));
+        // tasks.push(task::spawn(async move {
+        //     if let Err(e) = send_users_sms_to_endpoint(&users2, db_pool_arc.as_ref()).await {
+        //         println!("Error sending users to endpoint: {}", e);
+        //     }
+        //     Ok(())
+        // }));
 
-        let db_pool_arc = Arc::new(db_pool.clone());
+        // let db_pool_arc = Arc::new(db_pool.clone());
 
-        tasks.push(task::spawn(async move {
-            if let Err(e) = send_users_push_to_endpoint(&users3, db_pool_arc.as_ref()).await {
-                println!("Error sending users to endpoint: {}", e);
-            }
-            Ok(())
-        }));
+        // tasks.push(task::spawn(async move {
+        //     if let Err(e) = send_users_push_to_endpoint(&users3, db_pool_arc.as_ref()).await {
+        //         println!("Error sending users to endpoint: {}", e);
+        //     }
+        //     Ok(())
+        // }));
 
-        let db_pool_arc = Arc::new(db_pool.clone());
+        // let db_pool_arc = Arc::new(db_pool.clone());
 
-        tasks.push(task::spawn(async move {
-            if let Err(e) = send_users_voice_to_endpoint(&users4, db_pool_arc.as_ref()).await {
-                println!("Error sending users to endpoint: {}", e);
-            }
-            Ok(())
-        }));
+        // tasks.push(task::spawn(async move {
+        //     if let Err(e) = send_users_voice_to_endpoint(&users4, db_pool_arc.as_ref()).await {
+        //         println!("Error sending users to endpoint: {}", e);
+        //     }
+        //     Ok(())
+        // }));
 
         offset += 1000;
     }
 
-    let elapsed_time = start_time.elapsed().as_millis();
+    // let elapsed_time = start_time.elapsed().as_millis();
 
-    println!("count of user: {} number", count);
-    println!("count of jobs: {} number", tasks.len());
-    println!("Time taken for the DB: {} ms", elapsed_time);
-
+    // println!("count of user: {} number", count);
+    // println!("count of jobs: {} number", tasks.len());
+    // println!("Time taken for the DB: {} ms", elapsed_time);
     join_all(tasks).await;
-
     Ok(())
 }
 
@@ -288,68 +290,145 @@ async fn send_users_email_to_endpoint(
     db_pool: &PgPool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::new();
-    let endpoint_url = "http://192.168.1.8:3000/a";
+    let endpoint_url = "http://100.29.4.250/100";
     let request_body = json!({ "users": users_stream });
-    // create_user_confirmation(users_stream, db_pool, &4).await?;
+  //  create_user_confirmation(users_stream, db_pool, &4).await?;
     let start_time = Instant::now();
-    let response = client
-        .post(endpoint_url)
-        .header("Content-Type", "application/json")
-        .body(request_body.to_string())
-        .send()
-        .await?;
-    let elapsed_time = start_time.elapsed().as_secs();
+    // let response = client
+    //     .post(endpoint_url)
+    //     .header("Content-Type", "application/json")
+    //     .body(request_body.to_string())
+    //     .send()
+    //     .await?;
+    // let elapsed_time = start_time.elapsed().as_secs();
 
-    let sent_count = users_stream.len();
+    // let sent_count = users_stream.len();
 
-    let received_count = if response.status().is_success() {
-        // update_user_confirmation(users_stream, db_pool, &4).await?;
-        // println!("Users data sent successfully.");
-        sent_count
-    } else {
-        // println!("Failed to send users data: {:?}", "response.status()");
-        0
-    };
+    // let received_count = if response.status().is_success() {
+    //     // update_user_confirmation(users_stream, db_pool, &4).await?;
+    //     // println!("Users data sent successfully.");
+    //     sent_count
+    // } else {
+    //     // println!("Failed to send users data: {:?}", "response.status()");
+    //     0
+    // };
 
-    println!("Sent emails: {}", sent_count);
-    println!("Received emails: {}", received_count);
-    println!("Time taken: {} s", elapsed_time);
+    // println!("Sent emails: {}", sent_count);
+    // println!("Received emails: {}", received_count);
+    // println!("Time taken: {} s", elapsed_time);
 
+    let client = Arc::new(Client::new());
+
+    
+
+
+    let mut requests: Vec<_> = users_stream
+        .iter()
+        .map(|user| {
+            let client = Arc::clone(&client);
+            
+            client
+                .post(endpoint_url)
+                .header("Content-Type", "application/json")
+                .body(json!({ "id": user.id }).to_string())
+                .send()
+        })
+        .collect();
+    let mut results = Vec::new();
+    while !requests.is_empty() {
+        let batch: Vec<_> = requests.drain(..std::cmp::min(100, requests.len())).collect();
+        let batch_results: Vec<_> = futures::future::join_all(batch).await;
+        results.extend(batch_results);
+    
+        // Add a 100 millisecond delay between batches
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    for (i, result) in results.iter().enumerate() {
+        match result {
+            Ok(res) if res.status().is_success() => {
+                println!("Users data sent successfully for user {}", users_stream[i].id);
+            }
+            _ => {
+                println!("Failed to send users data for user {}: {:?}", users_stream[i].id, result.as_ref().err());
+            }
+        }
+    }
+    
     Ok(())
 }
-
 
 async fn send_users_sms_to_endpoint(
     users_stream: &Vec<User>,
     db_pool: &PgPool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::new();
-    let endpoint_url = "http://192.168.1.8:3000/a";
-    let request_body = json!({ "users": users_stream });
-    // create_user_confirmation(users_stream, db_pool, &4).await?;
+    let endpoint_url = "http://100.29.4.250/100";
+    create_user_confirmation(users_stream, db_pool, &4).await?;
     let start_time = Instant::now();
-    let response = client
-        .post(endpoint_url)
-        .header("Content-Type", "application/json")
-        .body(request_body.to_string())
-        .send()
-        .await?;
-    let elapsed_time = start_time.elapsed().as_secs();
+    // let request_body = json!({ "users": users_stream });
+    // let response = client
+    //     .post(endpoint_url)
+    //     .header("Content-Type", "application/json")
+    //     .body(request_body.to_string())
+    //     .send()
+    //     .await?;
+    // let elapsed_time = start_time.elapsed().as_secs();
 
-    let sent_count = users_stream.len();
+    // let sent_count = users_stream.len();
 
-    let received_count = if response.status().is_success() {
-        // update_user_confirmation(users_stream, db_pool, &4).await?;
-        // println!("Users data sent successfully.");
-        sent_count
-    } else {
-        // println!("Failed to send users data: {:?}", "response.status()");
-        0
-    };
+    // let received_count = if response.status().is_success() {
+    //     // update_user_confirmation(users_stream, db_pool, &4).await?;
+    //     // println!("Users data sent successfully.");
+    //     sent_count
+    // } else {
+    //     // println!("Failed to send users data: {:?}", "response.status()");
+    //     0
+    // };
 
-    println!("Sent sms: {}", sent_count);
-    println!("Received sms: {}", received_count);
-    println!("Time taken: {} s", elapsed_time);
+    let client = Arc::new(client);
+    let users_stream = Arc::new(users_stream);
+
+    let mut total_sent = Arc::new(Mutex::new(0));
+    let mut total_received = Arc::new(Mutex::new(0));
+    users_stream
+        .into_par_iter()
+        .enumerate()
+        .for_each(|(idx, _)| {
+            let client = Arc::clone(&client);
+            let total_sent = Arc::clone(&total_sent);
+            let total_received = Arc::clone(&total_received);
+
+            tokio::spawn(async move {
+                let request_body = json!({ "id": format!("{}_push", idx) });
+                let response = client
+                    .post(endpoint_url)
+                    .header("Content-Type", "application/json")
+                    .body(request_body.to_string())
+                    .send()
+                    .await
+                    .unwrap();
+                let elapsed_time = start_time.elapsed().as_secs();
+
+                let sent_count = if response.status().is_success() {
+                    // update_user_confirmation(users_stream, db_pool, &4).await?;
+                    println!("Users data sent successfully.");
+                    let mut total_sent = total_sent.lock().await;
+                    *total_sent += 1;
+                    1
+                } else {
+                    println!("Failed to send users data: {:?}", response.status());
+                    0
+                };
+
+                let mut total_received = total_received.lock().await;
+                *total_received += sent_count;
+            });
+        });
+
+    println!("Total users sent: {}", *total_sent.lock().await);
+    println!("Total users received: {}", *total_received.lock().await);
+
+    // println!("Time taken: {} s", elapsed_time);
 
     Ok(())
 }
@@ -359,32 +438,75 @@ async fn send_users_voice_to_endpoint(
     db_pool: &PgPool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::new();
-    let endpoint_url = "http://192.168.1.8:3000/a";
+    let endpoint_url = "http://100.29.4.250/100";
     let request_body = json!({ "users": users_stream });
-    // create_user_confirmation(users_stream, db_pool, &4).await?;
+    create_user_confirmation(users_stream, db_pool, &4).await?;
     let start_time = Instant::now();
-    let response = client
-        .post(endpoint_url)
-        .header("Content-Type", "application/json")
-        .body(request_body.to_string())
-        .send()
-        .await?;
-    let elapsed_time = start_time.elapsed().as_secs();
+    // let response = client
+    //     .post(endpoint_url)
+    //     .header("Content-Type", "application/json")
+    //     .body(request_body.to_string())
+    //     .send()
+    //     .await?;
+    // let elapsed_time = start_time.elapsed().as_secs();
 
-    let sent_count = users_stream.len();
+    // let sent_count = users_stream.len();
 
-    let received_count = if response.status().is_success() {
-        // update_user_confirmation(users_stream, db_pool, &4).await?;
-        // println!("Users data sent successfully.");
-        sent_count
-    } else {
-        // println!("Failed to send users data: {:?}", "response.status()");
-        0
-    };
+    // let received_count = if response.status().is_success() {
+    //     // update_user_confirmation(users_stream, db_pool, &4).await?;
+    //     // println!("Users data sent successfully.");
+    //     sent_count
+    // } else {
+    //     // println!("Failed to send users data: {:?}", "response.status()");
+    //     0
+    // };
 
-    println!("Sent voice: {}", sent_count);
-    println!("Received voice: {}", received_count);
-    println!("Time taken: {} s", elapsed_time);
+    // println!("Sent voice: {}", sent_count);
+    // println!("Received voice: {}", received_count);
+    // println!("Time taken: {} s", elapsed_time);
+    let client = Arc::new(client);
+    let users_stream = Arc::new(users_stream);
+
+    let mut total_sent = Arc::new(Mutex::new(0));
+    let mut total_received = Arc::new(Mutex::new(0));
+    users_stream
+        .into_par_iter()
+        .enumerate()
+        .for_each(|(idx, _)| {
+            let client = Arc::clone(&client);
+            let total_sent = Arc::clone(&total_sent);
+            let total_received = Arc::clone(&total_received);
+
+            tokio::spawn(async move {
+                let request_body = json!({ "id": format!("{}_push", idx) });
+                let response = client
+                    .post(endpoint_url)
+                    .header("Content-Type", "application/json")
+                    .body(request_body.to_string())
+                    .send()
+                    .await
+                    .unwrap();
+                let elapsed_time = start_time.elapsed().as_secs();
+
+                let sent_count = if response.status().is_success() {
+                    // update_user_confirmation(users_stream, db_pool, &4).await?;
+                    println!("Users data sent successfully.");
+                    let mut total_sent = total_sent.lock().await;
+                    *total_sent += 1;
+                    1
+                } else {
+                    println!("Failed to send users data: {:?}", response.status());
+                    0
+                };
+
+                let mut total_received = total_received.lock().await;
+                *total_received += sent_count;
+            });
+        });
+
+    println!("Total users sent: {}", *total_sent.lock().await);
+    println!("Total users received: {}", *total_received.lock().await);
+
     Ok(())
 }
 
@@ -393,32 +515,75 @@ async fn send_users_push_to_endpoint(
     db_pool: &PgPool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::new();
-    let endpoint_url = "http://192.168.1.8:3000/a";
+    let endpoint_url = "http://100.29.4.250/100";
     let request_body = json!({ "users": users_stream });
-    // create_user_confirmation(users_stream, db_pool, &4).await?;
+    create_user_confirmation(users_stream, db_pool, &4).await?;
     let start_time = Instant::now();
-    let response = client
-        .post(endpoint_url)
-        .header("Content-Type", "application/json")
-        .body(request_body.to_string())
-        .send()
-        .await?;
-    let elapsed_time = start_time.elapsed().as_secs();
+    // let response = client
+    //     .post(endpoint_url)
+    //     .header("Content-Type", "application/json")
+    //     .body(request_body.to_string())
+    //     .send()
+    //     .await?;
+    // let elapsed_time = start_time.elapsed().as_secs();
 
-    let sent_count = users_stream.len();
+    // let sent_count = users_stream.len();
 
-    let received_count = if response.status().is_success() {
-        // update_user_confirmation(users_stream, db_pool, &4).await?;
-        // println!("Users data sent successfully.");
-        sent_count
-    } else {
-        // println!("Failed to send users data: {:?}", "response.status()");
-        0
-    };
+    // let received_count = if response.status().is_success() {
+    //     // update_user_confirmation(users_stream, db_pool, &4).await?;
+    //     // println!("Users data sent successfully.");
+    //     sent_count
+    // } else {
+    //     // println!("Failed to send users data: {:?}", "response.status()");
+    //     0
+    // };
 
-    println!("Sent push: {}", sent_count);
-    println!("Received push: {}", received_count);
-    println!("Time taken: {} s", elapsed_time);
+    // println!("Sent push: {}", sent_count);
+    // println!("Received push: {}", received_count);
+    // println!("Time taken: {} s", elapsed_time);
+    let client = Arc::new(client);
+    let users_stream = Arc::new(users_stream);
+
+    let mut total_sent = Arc::new(Mutex::new(0));
+    let mut total_received = Arc::new(Mutex::new(0));
+    users_stream
+        .into_par_iter()
+        .enumerate()
+        .for_each(|(idx, _)| {
+            let client = Arc::clone(&client);
+            let total_sent = Arc::clone(&total_sent);
+            let total_received = Arc::clone(&total_received);
+
+            tokio::spawn(async move {
+                let request_body = json!({ "id": format!("{}_push", idx) });
+                let response = client
+                    .post(endpoint_url)
+                    .header("Content-Type", "application/json")
+                    .body(request_body.to_string())
+                    .send()
+                    .await
+                    .unwrap();
+                let elapsed_time = start_time.elapsed().as_secs();
+
+                let sent_count = if response.status().is_success() {
+                    // update_user_confirmation(users_stream, db_pool, &4).await?;
+                    println!("Users data sent successfully.");
+                    let mut total_sent = total_sent.lock().await;
+                    *total_sent += 1;
+                    1
+                } else {
+                    println!("Failed to send users data: {:?}", response.status());
+                    0
+                };
+
+                let mut total_received = total_received.lock().await;
+                *total_received += sent_count;
+            });
+        });
+
+    println!("Total users sent: {}", *total_sent.lock().await);
+    println!("Total users received: {}", *total_received.lock().await);
+
     Ok(())
 }
 
@@ -432,17 +597,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let pool = sqlx::postgres::PgPool::connect(url).await?;
 
-    create_schema(&pool).await?;
+    //  create_schema(&pool).await?;
 
     // seed_data(&pool).await?;
 
     let read_users_start = Instant::now();
 
-    let results: Vec<_> = (0..24)
-        .into_iter()
+    let results: Vec<_> = (0..1)
+        .into_par_iter()
         .map(|i| {
-            let start = i * 25_000;
-            let end = (i + 1) * 25_000;
+            let start = i * 25000;
+            let end = (i + 1) * 25000;
             read_users_in_batches(&pool, start, end)
         })
         .collect();
@@ -454,6 +619,5 @@ async fn main() -> Result<(), Box<dyn Error>> {
         "Reading user data in batches took {:?}",
         read_users_duration
     );
-
     Ok(())
 }
