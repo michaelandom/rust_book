@@ -272,7 +272,6 @@ async fn read_users_in_batches(
         //     }
         //     Ok(())
         // }));
-
         offset += 1000;
     }
 
